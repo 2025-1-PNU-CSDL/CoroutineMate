@@ -3,3 +3,14 @@ plugins {
     alias(libs.plugins.android.application) apply false
     alias(libs.plugins.kotlin.android) apply false
 }
+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath("com.android.tools.build:gradle:8.10.0")
+        classpath("com.google.gms:google-services:4.4.2") // Firebase 사용해서 필요함
+    }
+}

@@ -102,6 +102,7 @@ class VideoPushUpAnalyzerActivity : AppCompatActivity(), PushUpAnalyzer.PushUpLi
         // PlayerView 초기화 및 ExoPlayer 연결
         playerView = findViewById<PlayerView>(R.id.playerView)
         exoPlayer = ExoPlayer.Builder(this).build() // ExoPlayer 인스턴스 생성
+        exoPlayer.volume = 0f // 음소거
         playerView.player = exoPlayer // 플레이어 뷰에 플레이어 설정
 
         progressBarVideo = findViewById(R.id.progressBarVideoProcessing)
@@ -113,8 +114,8 @@ class VideoPushUpAnalyzerActivity : AppCompatActivity(), PushUpAnalyzer.PushUpLi
         }
 
         // ML Kit Accurate Pose Detector 초기화
-        // STREAM_MODE는 연속된 이미지(비디오 프레임 등) 처리에 적합합니다.
-        // SINGLE_IMAGE_MODE는 단일 정적 이미지 처리에 적합합니다.
+        // STREAM_MODE는 연속된 이미지(비디오 프레임 등) 처리에 적합.
+        // SINGLE_IMAGE_MODE는 단일 정적 이미지 처리에 적합
         val options = AccuratePoseDetectorOptions.Builder()
             .setDetectorMode(AccuratePoseDetectorOptions.STREAM_MODE) // 스트림 모드로 설정
             .build()
@@ -269,8 +270,8 @@ class VideoPushUpAnalyzerActivity : AppCompatActivity(), PushUpAnalyzer.PushUpLi
 
     override fun onFeedback(feedback: PushUpFeedbackType, countAtFeedback: Int) {
         // 동영상 분석에서는 모든 프레임의 피드백을 즉시 UI에 표시하기보다는
-        // onProcessingComplete에서 요약된 형태로 보여주는 것이 더 적합할 수 있습니다.
-        // 여기서는 로그로만 기록하고, 최종 피드백은 onProcessingComplete에서 처리합니다.
+        // onProcessingComplete에서 요약된 형태로 보여주는 것이 더 적합할 수 있음
+        // 여기서는 로그로만 기록하고, 최종 피드백은 onProcessingComplete에서 처리
         val feedbackText = when (feedback) {
             PushUpFeedbackType.NOT_ELBOW_UP_ENOUGH -> "팔꿈치 더 펴세요"
             PushUpFeedbackType.NOT_ELBOW_DOWN_ENOUGH -> "팔꿈치 더 굽히세요"
@@ -290,7 +291,7 @@ class VideoPushUpAnalyzerActivity : AppCompatActivity(), PushUpAnalyzer.PushUpLi
 
     override fun onTargetReached() {
         Log.i("VideoPushUpListener", "Target push-up count reached.")
-        // 동영상 분석에서는 목표 도달 시 특별한 UI 알림을 추가할 수 있습니다.
+        // 동영상 분석에서는 목표 도달 시 특별한 UI 알림을 추가할 수 있음
         // 예: Toast 메시지 표시
         runOnUiThread {
             Toast.makeText(this, "목표 푸시업 ${pushUpAnalyzer}회 달성!", Toast.LENGTH_SHORT).show()
@@ -305,7 +306,7 @@ class VideoPushUpAnalyzerActivity : AppCompatActivity(), PushUpAnalyzer.PushUpLi
     }
 
     override fun onProcessingComplete(totalCount: Int, feedbackLog: List<Pair<Int, PushUpFeedbackType>>) {
-        // 동영상 전체 분석이 완료된 후 호출됩니다.
+        // 동영상 전체 분석이 완료된 후 호출
         runOnUiThread {
             textViewPushUpCount.text = "최종 횟수: $totalCount"
             textViewPushUpState.text = "상태: 분석 완료"
@@ -334,9 +335,9 @@ class VideoPushUpAnalyzerActivity : AppCompatActivity(), PushUpAnalyzer.PushUpLi
 
     override fun onDestroy() {
         super.onDestroy()
-        // Activity가 소멸될 때 진행 중인 코루틴 작업이 있다면 취소합니다.
+        // Activity가 소멸될 때 진행 중인 코루틴 작업이 있다면 취소
         videoProcessingJob?.cancel()
-        // ML Kit PoseDetector 리소스를 해제합니다. 매우 중요!
+        // ML Kit PoseDetector 리소스를 해제 (중요)
         poseDetector.close()
         Log.i("VideoPushUpActivity", "Activity destroyed, resources released (coroutine cancelled, poseDetector closed).")
     }

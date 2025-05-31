@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp"
+    tools:context=".VideoPushUpAnalyzerActivity">
+
+    <!-- 동영상 선택 버튼 -->
+    <Button
+        android:id="@+id/buttonSelectVideo"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="동영상 선택"
+        android:layout_marginBottom="16dp"/>
+
+    <!-- 프레임 미리보기 이미지뷰 -->
+    <ImageView
+        android:id="@+id/imageViewFramePreview"
+        android:layout_width="match_parent"
+        android:layout_height="200dp"
+        android:layout_marginBottom="8dp"
+        android:background="#E0E0E0"
+        android:scaleType="fitCenter"
+        android:contentDescription="처리 중인 동영상 프레임" />
+
+    <!-- 동영상 처리 진행률 프로그레스바 -->
+    <ProgressBar
+        android:id="@+id/progressBarVideoProcessing"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        android:max="100"
+        android:progress="0"
+        android:visibility="gone" /> <!-- 초기에는 숨김 -->
+
+    <!-- 푸시업 횟수 표시 텍스트뷰 -->
+    <TextView
+        android:id="@+id/textViewPushUpCount"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="횟수: 0"
+        android:textSize="18sp"
+        android:layout_marginBottom="8dp"/>
+
+    <!-- 푸시업 상태 표시 텍스트뷰 -->
+    <TextView
+        android:id="@+id/textViewPushUpState"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="상태: 대기 중"
+        android:textSize="18sp"
+        android:layout_marginBottom="8dp"/>
+
+    <!-- 푸시업 피드백 표시 텍스트뷰 -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <TextView
+            android:id="@+id/textViewPushUpFeedback"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="피드백: -"
+            android:textSize="16sp"/>
+    </ScrollView>
+
+</LinearLayout>

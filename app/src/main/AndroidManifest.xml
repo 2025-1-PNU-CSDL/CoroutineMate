@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <uses-permission android:name="android.permission.CAMERA" />
-    <uses-feature android:name="android.hardware.camera.any" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
 
     <application
         android:usesCleartextTraffic="true"
@@ -15,12 +16,11 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.CoroutineMate"
-        tools:targetApi="31">
+        android:theme="@style/Theme.CoroutineMate">
 
         <activity android:name=".WorkoutActivity" />
         <activity android:name=".RecordsActivity" />
-        <activity android:name=".RealtimeCountActivity"/>
+        <activity android:name=".VideoPushUpAnalyzerActivity"/>
 
         <activity
             android:name=".MainActivity"

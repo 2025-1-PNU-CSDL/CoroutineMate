@@ -12,8 +12,8 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
 
         // ------------ DEBUG CODE ------------
-        //startActivity(Intent(this, RealtimeCountActivity::class.java))
-        //finish()
+        startActivity(Intent(this, VideoPushUpAnalyzerActivity::class.java))
+        finish()
         // ------------ DEBUG CODE ------------
 
         setContentView(R.layout.activity_main)

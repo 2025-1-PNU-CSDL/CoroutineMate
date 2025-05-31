@@ -16,7 +16,7 @@
         android:text="동영상 선택"
         android:layout_marginBottom="16dp"/>
 
-    <!-- 프레임 미리보기 이미지뷰 -->
+    <!-- 프레임 미리보기 이미지뷰
     <ImageView
         android:id="@+id/imageViewFramePreview"
         android:layout_width="match_parent"
@@ -24,7 +24,19 @@
         android:layout_marginBottom="8dp"
         android:background="#E0E0E0"
         android:scaleType="fitCenter"
-        android:contentDescription="처리 중인 동영상 프레임" />
+        android:contentDescription="처리 중인 동영상 프레임" /> -->
+
+    <androidx.media3.ui.PlayerView
+        android:id="@+id/playerView"
+        android:layout_width="match_parent"
+        android:layout_height="200dp"
+        android:layout_marginBottom="8dp"
+        android:background="#000000"
+        android:scaleType="fitCenter"
+        android:contentDescription="처리 중인 동영상 프레임"
+        app:surface_type="texture_view"
+        app:use_controller="false"
+        app:resize_mode="fit"/>
 
     <!-- 동영상 처리 진행률 프로그레스바 -->
     <ProgressBar

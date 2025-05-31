@@ -5,6 +5,7 @@ import android.media.MediaMetadataRetriever // 동영상 파일에서 메타데�
 import android.net.Uri // 동영상 파일의 URI를 다루기 위함
 import android.os.Bundle // Activity 생명주기 관리를 위함
 import android.util.Log // 로깅 유틸리티
+import android.view.TextureView
 import android.view.View // UI 요소의 가시성 등을 제어하기 위함
 import android.widget.Button // UI 버튼
 import android.widget.ImageView // 동영상 프레임 미리보기를 위한 UI
@@ -12,8 +13,14 @@ import android.widget.ProgressBar // 동영상 처리 진행 상태를 표시하
 import android.widget.TextView // 텍스트 정보를 표시하기 위한 UI
 import android.widget.Toast // 간단한 메시지를 사용자에게 보여주기 위함
 import androidx.activity.result.contract.ActivityResultContracts // 파일 선택 등 Activity 결과를 받기 위한 최신 방식
+import androidx.annotation.OptIn
 import androidx.appcompat.app.AppCompatActivity // 기본 Activity 클래스
+import androidx.core.view.drawToBitmap
 import androidx.lifecycle.lifecycleScope // Activity의 생명주기와 연동된 코루틴 스코프
+import androidx.media3.common.MediaItem
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import com.example.coroutinemate.Counter.PushUpAnalyzer
 import com.example.coroutinemate.Counter.PushUpFeedbackType
 import com.google.android.gms.tasks.Task
@@ -32,7 +39,8 @@ import java.io.IOException // 파일 입출력 예외 처리를 위함
 
 /**
  * 저장된 동영상을 불러와 푸시업 횟수를 분석하고 결과를 보여주는 Activity 입니다.
- * MediaMetadataRetriever를 사용하여 동영상 프레임을 추출하고,
+ * 메인 스레드에서 ExoPlayer로 UI 상에 영상을 표시하고
+ * 백그라운드 스레드에서 ExoPlayer의 프레임을 가져와 ML Kit으로 넘긴 후,
  * ML Kit Pose Detection (Accurate 모델)을 사용하여 각 프레임에서 자세를 감지한 후,
  * PushUpAnalyzer를 통해 푸시업 동작을 분석합니다.
  */
@@ -43,7 +51,7 @@ class VideoPushUpAnalyzerActivity : AppCompatActivity(), PushUpAnalyzer.PushUpLi
     private lateinit var textViewPushUpCount: TextView
     private lateinit var textViewPushUpState: TextView
     private lateinit var textViewPushUpFeedback: TextView
-    private lateinit var imageViewFramePreview: ImageView // 현재 처리 중인 프레임을 보여줄 이미지뷰
+    private lateinit var playerView: PlayerView // 현재 처리 중인 영상을 보여줄 플레이어 뷰
     private lateinit var progressBarVideo: ProgressBar    // 동영상 처리 진행 상태를 나타낼 프로그레스바
 
     // ML Kit Pose Detector 인스턴스
@@ -51,8 +59,12 @@ class VideoPushUpAnalyzerActivity : AppCompatActivity(), PushUpAnalyzer.PushUpLi
     // 푸시업 분석 로직을 담고 있는 클래스 인스턴스
     private lateinit var pushUpAnalyzer: PushUpAnalyzer
 
-    // 동영상 처리 코루틴 작업을 관리하기 위한 Job 객체
+    // processVideo 메서드에서 사용하기 위한 Job
+    // videoProcessingJob은 백그라운드 스레드에서 ExoPlayer의 프레임을 가져와 ML Kit으로 넘김
     private var videoProcessingJob: Job? = null
+
+    // ExoPlayer 객체
+    private lateinit var exoPlayer: ExoPlayer
 
     // 동영상 파일을 선택하기 위한 ActivityResultLauncher
     // 사용자가 파일을 선택하면 콜백으로 URI가 전달됩니다.
@@ -63,10 +75,15 @@ class VideoPushUpAnalyzerActivity : AppCompatActivity(), PushUpAnalyzer.PushUpLi
             textViewPushUpCount.text = "횟수: 0"
             textViewPushUpState.text = "상태: 대기 중"
             textViewPushUpFeedback.text = "피드백: -"
-            imageViewFramePreview.setImageBitmap(null) // 이전 프레임 미리보기 지우기
             progressBarVideo.visibility = View.VISIBLE // 프로그레스바 보이기
             progressBarVideo.progress = 0            // 프로그레스바 진행도 초기화
             pushUpAnalyzer.reset()                   // 분석기 상태 리셋
+
+            // MediaItem 세팅
+            val mediaItem = MediaItem.fromUri(selectedVideoUri)
+            playerView.player?.setMediaItem(mediaItem)
+            playerView.player?.prepare()
+
             processVideo(selectedVideoUri)           // 선택된 동영상 처리 시작
         }
     }
@@ -81,7 +98,12 @@ class VideoPushUpAnalyzerActivity : AppCompatActivity(), PushUpAnalyzer.PushUpLi
         textViewPushUpCount = findViewById(R.id.textViewPushUpCount)
         textViewPushUpState = findViewById(R.id.textViewPushUpState)
         textViewPushUpFeedback = findViewById(R.id.textViewPushUpFeedback)
-        imageViewFramePreview = findViewById(R.id.imageViewFramePreview)
+
+        // PlayerView 초기화 및 ExoPlayer 연결
+        playerView = findViewById<PlayerView>(R.id.playerView)
+        exoPlayer = ExoPlayer.Builder(this).build() // ExoPlayer 인스턴스 생성
+        playerView.player = exoPlayer // 플레이어 뷰에 플레이어 설정
+
         progressBarVideo = findViewById(R.id.progressBarVideoProcessing)
 
         // "동영상 선택" 버튼 클릭 리스너 설정
@@ -110,16 +132,19 @@ class VideoPushUpAnalyzerActivity : AppCompatActivity(), PushUpAnalyzer.PushUpLi
      * 코루틴을 사용하여 백그라운드 스레드에서 오래 걸리는 작업을 처리합니다.
      * @param videoUri 분석할 동영상의 URI.
      */
+    @OptIn(UnstableApi::class)
     private fun processVideo(videoUri: Uri) {
-        // lifecycleScope.launch는 Activity의 생명주기에 맞춰 코루틴을 관리합니다.
-        // Dispatchers.Default는 CPU 집약적인 작업에 적합한 백그라운드 스레드 풀을 사용합니다.
+        // 메인 스레드에서 비디오 재생
+        exoPlayer.play()
+
+        // 백그라운드 스레드에서 플레이어의 프레임을 가져와 ML Kit으로 전달
         videoProcessingJob = lifecycleScope.launch(Dispatchers.Default) {
             val retriever = MediaMetadataRetriever()
             try {
                 // MediaMetadataRetriever에 동영상 데이터 소스 설정
                 retriever.setDataSource(applicationContext, videoUri)
 
-                // 동영상의 전체 길이(ms)를 가져옵니다.
+                // 동영상의 전체 길이(ms)를 가져옴
                 val durationString = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
                 val videoDurationMs = durationString?.toLongOrNull() ?: 0L
 
@@ -130,8 +155,17 @@ class VideoPushUpAnalyzerActivity : AppCompatActivity(), PushUpAnalyzer.PushUpLi
                         Toast.makeText(applicationContext, "동영상 길이 정보를 가져올 수 없습니다.", Toast.LENGTH_SHORT).show()
                         progressBarVideo.visibility = View.GONE
                     }
+                    retriever.release() // MediaMetadataRetriever 리소스 해제
                     return@launch // 코루틴 종료
                 }
+
+                // PlayerView 내부의 Surface가 TextureView인지 확인하고 가져옴
+                val textureView = playerView.videoSurfaceView as? TextureView
+                    ?: run {
+                        Log.e("Analysis", "PlayerView 내부가 TextureView가 아닙니다! surface_type 확인 필요.")
+                        retriever.release()
+                        return@launch
+                    }
 
                 // PushUpAnalyzer의 처리 시작을 알림
                 pushUpAnalyzer.startProcessing()
@@ -139,63 +173,46 @@ class VideoPushUpAnalyzerActivity : AppCompatActivity(), PushUpAnalyzer.PushUpLi
                 // 동영상 프레임 추출 간격 설정 (마이크로초 단위)
                 // 예: 100_000L 마이크로초 = 100ms = 0.1초 => 초당 10프레임 분석
                 // 이 값은 분석 정확도와 처리 시간 간의 트레이드오프입니다. 줄이면 더 많은 프레임 분석, 늘리면 더 적은 프레임 분석.
-                val frameIntervalUs: Long = 50_000L // 약 20 FPS
-                var currentTimeUs: Long = 0L         // 현재 처리 중인 동영상 시간 (마이크로초)
+                val frameIntervalMs: Long = 50 // 50ms = 약 20 FPS
 
-                Log.i("VideoPushUpActivity", "Starting video processing. Duration: ${videoDurationMs}ms, Frame Interval: ${frameIntervalUs}us")
-
-                // 코루틴이 활성 상태이고, 동영상의 끝까지 처리하지 않았다면 반복
-                while (isActive && currentTimeUs < videoDurationMs * 1000) { // videoDurationMs는 ms 단위이므로 1000을 곱해 us로 변환
-                    // 현재 시간(currentTimeUs)에 가장 가까운 키프레임(또는 동기화 프레임)의 Bitmap을 가져옵니다.
-                    // OPTION_CLOSEST_SYNC는 가장 가까운 동기화 프레임을 가져와 디코딩 시간을 줄이는 데 도움을 줄 수 있습니다.
-                    // OPTION_CLOSEST는 가장 가까운 프레임을 가져오지만 디코딩이 더 오래 걸릴 수 있습니다.
-                    val bitmap: Bitmap? = retriever.getFrameAtTime(
-                        currentTimeUs,
-                        MediaMetadataRetriever.OPTION_CLOSEST_SYNC
-                    )
-
-                    // Bitmap을 가져오지 못한 경우 (예: 동영상 끝부분 또는 오류) 다음 간격으로 넘어갑니다.
-                    if (bitmap == null) {
-                        Log.w("VideoPushUpActivity", "Failed to retrieve frame at $currentTimeUs us. Skipping.")
-                        currentTimeUs += frameIntervalUs
-                        continue // 다음 루프 반복
+                Log.i("VideoPushUpActivity", "Starting video processing. Duration: ${videoDurationMs}ms, Frame Interval: ${frameIntervalMs}ms")
+                while (isActive) {
+                    // exoPlayer 접근하려면 메인 스레드에서 처리해야 함
+                    // currentMs: 현재 처리 중인 동영상 시간
+                    // isPlaying: 재생 여부
+                    val (currentMs, isPlaying) = withContext(Dispatchers.Main) {
+                        exoPlayer.currentPosition to exoPlayer.isPlaying
                     }
 
-                    // Bitmap을 ML Kit이 요구하는 InputImage 형식으로 변환합니다.
-                    // 동영상의 회전 정보를 안다면 여기서 bitmap 회전 후 InputImage.fromBitmap(rotatedBitmap, 0) 호출
-                    val image = InputImage.fromBitmap(bitmap, 0) // 이미지 회전값은 0으로 가정
+                    if (currentMs >= videoDurationMs) break // 동영상 끝 도달하면 루프 종료
+                    if (!isPlaying) { // 일시 정지한 경우 딜레이만 주고 계속 continue 시켜서 아래 작업 스킵
+                        delay(frameIntervalMs)
+                        continue
+                    }
 
-                    try {
-                        // PoseDetector로 자세 감지를 비동기적으로 수행하고 결과를 기다립니다.
-                        // kotlinx.coroutines.tasks.await() 확장 함수를 사용하여 Google Play Services Task를 코루틴과 통합합니다.
-                        //val poseResult: Pose = kotlinx.coroutines.tasks.await(poseDetector.process(image))
-                        val poseResult: Pose = poseDetector.process(image).await()
-
-                        // 감지된 Pose 객체를 PushUpAnalyzer로 전달하여 푸시업 분석 수행
-                        pushUpAnalyzer.analyzePose(poseResult)
-
-                        // (선택 사항) UI 업데이트: 현재 처리 중인 프레임 미리보기 및 진행률 표시
-                        // UI 업데이트는 반드시 메인 스레드에서 수행해야 합니다.
-                        withContext(Dispatchers.Main) {
-                            imageViewFramePreview.setImageBitmap(bitmap) // Bitmap을 이미지뷰에 표시
-                            // 진행률 계산 및 프로그레스바 업데이트
-                            val progress = (currentTimeUs * 100 / (videoDurationMs * 1000)).toInt()
-                            progressBarVideo.progress = progress
+                    // TextureView에서 현재 프레임 Bitmap 가져오기
+                    val bitmap: Bitmap? = textureView.bitmap // 하드웨어 가속으로 버퍼에서 한 번에 가져옴
+                    if (bitmap != null) {
+                        // ML Kit에 넘기기 위해 InputImage로 변환
+                        val inputImage = InputImage.fromBitmap(bitmap, 0)
+                        try {
+                            val poseResult: Pose = poseDetector.process(inputImage).await() // ML Kit에 이미지 넘기고 await
+                            pushUpAnalyzer.analyzePose(poseResult) // 감지된 Pose 객체를 PushUpAnalyzer로 전달하여 푸시업 분석 수행
+                        } catch (e: Exception) {
+                            // ML Kit 처리 중 발생할 수 있는 예외 로깅
+                            Log.e("VideoPushUpActivity", "Error processing frame with ML Kit at $currentMs ms", e)
+                        } finally {
+                            bitmap.recycle() // ML Kit 작업 다 끝났으면 비트맵 메모리 해제
                         }
 
-                    } catch (e: Exception) {
-                        // ML Kit 처리 중 발생할 수 있는 예외 로깅
-                        Log.e("VideoPushUpActivity", "Error processing frame with ML Kit at $currentTimeUs us", e)
+                        // 메인 스레드에서 진행률 계산 및 프로그레스 바 업데이트
+                        withContext(Dispatchers.Main) {
+                            val progress = (currentMs * 100 / videoDurationMs).toInt()
+                            progressBarVideo.progress = progress
+                        }
                     }
-                    // InputImage.fromBitmap은 내부적으로 Bitmap 복사본을 만들지 않을 수 있으므로,
-                    // 여기서 bitmap.recycle()을 호출하면 ML Kit 처리 중 문제가 발생할 수 있습니다.
-                    // Bitmap 관리에 주의해야 합니다. InputImage가 Bitmap을 소유하도록 두거나,
-                    // 명시적으로 복사본을 만들어 전달 후 원본을 recycle() 하는 전략을 사용할 수 있습니다.
-                    // 여기서는 ML Kit이 내부적으로 처리한다고 가정하고 recycle()을 호출하지 않습니다.
 
-                    // 다음 프레임 추출 시간으로 이동
-                    currentTimeUs += frameIntervalUs
-                    ensureActive() // 코루틴이 취소되었는지 주기적으로 확인 (루프 중간에 취소될 수 있도록)
+                    delay(frameIntervalMs) // 다음 분석 시점까지 대기
                 }
                 Log.i("VideoPushUpActivity", "Video frame processing loop finished.")
 
@@ -222,9 +239,9 @@ class VideoPushUpAnalyzerActivity : AppCompatActivity(), PushUpAnalyzer.PushUpLi
                     Log.e("VideoPushUpActivity", "Error releasing MediaMetadataRetriever", ex)
                 }
                 // 코루틴이 명시적으로 취소되지 않고 정상적으로 루프를 마쳤다면,
-                // PushUpAnalyzer의 처리를 중단시키고 onProcessingComplete 콜백을 유도합니다.
+                // PushUpAnalyzer의 처리를 중단시키고 onProcessingComplete 콜백을 유도
                 if (isActive) {
-                    pushUpAnalyzer.stopProcessing() // 여기서 onProcessingComplete 리스너 메소드가 호출됩니다.
+                    pushUpAnalyzer.stopProcessing() // 여기서 onProcessingComplete 리스너 메소드 호출
                 }
                 // 프로그레스바 숨기기 (메인 스레드에서)
                 withContext(Dispatchers.Main) {
